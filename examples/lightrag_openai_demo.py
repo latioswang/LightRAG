@@ -8,11 +8,7 @@ from lightrag.llm import gpt_4o_mini_complete
 WORKING_DIR = "./movies"
 INPUT_DIR="./data/"
 
-os.makedirs(WORKING_DIR, exist_ok=True)
-
-os.environ["OPENAI_API_KEY"] = "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"
-
- 
+os.makedirs(WORKING_DIR, exist_ok=True) 
 # neo4j
 BATCH_SIZE_NODES = 500
 BATCH_SIZE_EDGES = 100
