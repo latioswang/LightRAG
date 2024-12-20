@@ -12,16 +12,16 @@ os.makedirs(WORKING_DIR, exist_ok=True)
 # neo4j
 BATCH_SIZE_NODES = 500
 BATCH_SIZE_EDGES = 100
-os.environ["NEO4J_URI"] = "neo4j+s://49341d95.databases.neo4j.io"
+os.environ["NEO4J_URI"] = "neo4j://localhost:7687"
 os.environ["NEO4J_USERNAME"] = "neo4j"
-os.environ["NEO4J_PASSWORD"] = "VRNrnd5iPbLlH1RHqoHiRC9DDlHSTE2oDnLCsBF2_bg"
+os.environ["NEO4J_PASSWORD"] = "password"
 
 rag = LightRAG(
     working_dir=WORKING_DIR,
     llm_model_func=gpt_4o_mini_complete,
     # llm_model_func=gpt_4o_complete
     graph_storage="Neo4JStorage",
-    
+    enable_llm_cache = False
 )
 
 
@@ -56,3 +56,9 @@ log.info(f"Executing hybrid search query: {query}")
 print(
     rag.query(query, param=QueryParam(mode="hybrid"))
 )
+
+# Start IPython shell with current namespace
+from IPython import embed
+embed(colors="neutral")  # or just embed() for default colors
+
+

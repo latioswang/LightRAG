@@ -447,7 +447,7 @@ def dequantize_embedding(
     return (quantized * scale + min_val).astype(np.float32)
 
 
-async def handle_cache(hashing_kv, args_hash, prompt, mode="default"):
+async def handle_cache(hashing_kv, args_hash, prompt: str, mode: str="default"):
     """Generic cache handling function"""
     if hashing_kv is None:
         return None, None, None, None
@@ -506,8 +506,12 @@ class CacheData:
     mode: str = "default"
 
 
-async def save_to_cache(hashing_kv, cache_data: CacheData):
-    if hashing_kv is None or hasattr(cache_data.content, "__aiter__"):
+async def save_to_cache(hashing_kv, cache_data: CacheData) -> None:
+    if hashing_kv is None:
+        # cache is disabled
+        return 
+    if hasattr(cache_data.content, "__aiter__"):
+        # response is a stream, not a string
         return
 
     mode_cache = await hashing_kv.get_by_id(cache_data.mode) or {}
