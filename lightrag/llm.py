@@ -56,13 +56,13 @@ async def openai_complete_if_cache(
     history_messages=[],
     base_url=None,
     api_key=None,
+    openai_kwargs={},
     **kwargs,
 ) -> str:
     if api_key:
         os.environ["OPENAI_API_KEY"] = api_key
-
     openai_async_client = (
-        AsyncOpenAI() if base_url is None else AsyncOpenAI(base_url=base_url)
+        AsyncOpenAI(**openai_kwargs) if base_url is None else AsyncOpenAI(base_url=base_url, **openai_kwargs)
     )
     kwargs.pop("hashing_kv", None)
     kwargs.pop("keyword_extraction", None)
