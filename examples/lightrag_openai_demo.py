@@ -20,7 +20,7 @@ rag = LightRAG(
     working_dir=WORKING_DIR,
     llm_model_func=gpt_4o_mini_complete,
     # llm_model_func=gpt_4o_complete
-    graph_storage="Neo4JStorage",
+    graph_storage="NetworkXStorage",
     enable_llm_cache = False
 )
 

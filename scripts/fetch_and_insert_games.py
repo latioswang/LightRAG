@@ -9,7 +9,7 @@ from typing import List, Optional
 from lightrag import LightRAG
 from lightrag.llm import gpt_4o_mini_complete
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator, field_validator
 from neo4j import GraphDatabase
 
 class ImageSrc(BaseModel):
@@ -35,9 +35,9 @@ class ScoreFormat(BaseModel):
     scoreDisplay: Optional[str]
     isNumeric: bool
     isSelect: bool
-    isStars: bool
-    numDecimals: Optional[int]
-    base: Optional[int]
+    isStars: Optional[bool] = None
+    numDecimals: Optional[int] = None
+    base: Optional[int] = None
     options: Optional[List[ScoreFormatOption]] = None
 
 class Game(BaseModel):
@@ -47,7 +47,7 @@ class Game(BaseModel):
 class Author(BaseModel):
     id: int
     name: str
-    image: bool
+    image: Optional[bool] = None
     _id: str
     # missing if self.image is false
     imageSrc: Optional[ImageSrc] = None
@@ -70,7 +70,7 @@ class GameReview(BaseModel):
     externalUrl: str
     snippet: Optional[str] = None
     language: str
-    score: Optional[int] = None
+    score: Optional[float] = None
     npScore: Optional[int]
     Authors: List[Author]
     Platforms: List[Platform]
@@ -81,14 +81,24 @@ class GameReview(BaseModel):
     v: Optional[int] = Field(None, alias='__v')
 
     class Config:
+        strict = False
         populate_by_name = True
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
 
+    @model_validator(mode='after')
+    def convert_float_scores(self):
+        # Convert float scores to integers if they exist
+        if isinstance(self.score, float):
+            self.score = int(self.score)
+        if isinstance(self.npScore, float):
+            self.npScore = int(self.npScore)
+        return self
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Fetch game reviews and insert into LightRAG')
-    parser.add_argument('--input-file', type=str, default='./data/games/game_urls2.txt',
+    parser.add_argument('--input-file', type=str, default='./data/games/game_urls_ps5.txt',
                        help='Input file containing game URLs')
     parser.add_argument('--cache-dir', type=str, default='./data/games/opencritic_cache',
                        help='Directory to cache game reviews')
@@ -117,6 +127,25 @@ def extract_game_ids(input_file: str) -> List[str]:
     
     return game_ids
 
+def safe_validate_reviews(data: List[dict]) -> List[GameReview]:
+    """Safely validate review data, logging errors and only raising if too many failures."""
+    validated_reviews = []
+    error_count = 0
+    
+    for review_data in data:
+        try:
+            review = GameReview.model_validate(review_data)
+            validated_reviews.append(review)
+        except Exception as e:
+            error_count += 1
+            log.error(f"Failed to validate review: {str(e)[:200]}...")
+    
+    # Raise exception if more than 10% of reviews failed validation
+    if error_count > len(data) * 0.1:
+        raise ValueError(f"Too many validation errors: {error_count}/{len(data)} reviews failed")
+    
+    return validated_reviews
+
 def fetch_game_reviews(game_id: str, cache_dir: str) -> List[GameReview]:
     cache_file = Path(cache_dir) / f"{game_id}.json"
     
@@ -124,8 +153,7 @@ def fetch_game_reviews(game_id: str, cache_dir: str) -> List[GameReview]:
     if cache_file.exists():
         with open(cache_file, 'r') as f:
             data = json.load(f)
-            # Convert JSON data to GameReview objects using Pydantic
-            return [GameReview.model_validate(review_data) for review_data in data]
+            return safe_validate_reviews(data)
     
     # Fetch from API if not cached
     headers = {
@@ -145,8 +173,8 @@ def fetch_game_reviews(game_id: str, cache_dir: str) -> List[GameReview]:
     with open(cache_file, 'w') as f:
         json.dump(data, f)
     
-    # Convert to GameReview objects
-    return [GameReview.model_validate(review_data) for review_data in data]
+    # Convert to GameReview objects with error handling
+    return safe_validate_reviews(data)
 
 def prepare_review_text(reviews: List[GameReview]) -> str:
     """Convert reviews into a structured text format for RAG"""
@@ -227,7 +255,8 @@ async def main():
     rag = LightRAG(
         working_dir=args.working_dir,
         llm_model_func=gpt4o_mini_complete_with_retries,
-        graph_storage="Neo4JStorage",
+        # graph_storage="Neo4JStorage",
+        graph_storage="NetworkXStorage",
         enable_llm_cache=True,
         addon_params={
             "entity_types": [
