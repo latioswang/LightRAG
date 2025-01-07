@@ -11,6 +11,8 @@ from lightrag.llm import gpt_4o_mini_complete
 from datetime import datetime
 from pydantic import BaseModel, Field, model_validator, field_validator
 from neo4j import GraphDatabase
+from anthropic import AsyncAnthropic
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 class ImageSrc(BaseModel):
     og: str
@@ -194,7 +196,7 @@ def prepare_review_text(reviews: List[GameReview]) -> str:
     
     return "\n".join(text_parts)
 
-async def gpt4o_mini_complete_with_retries(
+async def claude_complete_with_retries(
     prompt, 
     system_prompt=None, 
     history_messages=[], 
@@ -202,20 +204,45 @@ async def gpt4o_mini_complete_with_retries(
     *args, 
     **kwargs
 ):
-    try: 
-        return await gpt_4o_mini_complete(
-            prompt, 
-            system_prompt,
-            history_messages,
-            keyword_extraction,
-            *args, 
-            openai_kwargs={"max_retries": 0}, 
-            **kwargs
+    """
+    Call Claude API with retry logic for error handling.
+    
+    Args:
+        prompt (str): The main prompt to send to Claude
+        system_prompt (str, optional): System prompt to set context
+        history_messages (list, optional): Previous conversation messages
+        keyword_extraction (bool, optional): Whether to extract keywords from response
+        *args: Additional positional arguments
+        **kwargs: Additional keyword arguments
+    
+    Returns:
+        str: Claude's response text
+    """
+    try:
+        # Initialize AsyncAnthropic client
+        client = AsyncAnthropic(api_key='')
+        
+        # Prepare messages
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": prompt})
+
+        # Call Claude API
+        response = await client.messages.create(
+            model=kwargs.pop("model", "claude-3-5-haiku-20241022"),
+            messages=messages,
+            max_tokens=kwargs.pop("max_tokens", 1024),
+            temperature=kwargs.pop("temperature", 0.7),
         )
+        
+        return response.content[0].text
+
     except Exception as e:
-        log.error(f"Error in gpt4o_mini_complete: prompt={...} tokens={len(prompt) // 4}, system_prompt={system_prompt}, "
-                     f"history_messages={history_messages}, keyword_extraction={keyword_extraction}, "
-                     f"args={args}, kwargs={kwargs}")
+        log.error(f"Error in claude_complete: prompt={...} tokens={len(prompt) // 4}, "
+                 f"system_prompt={system_prompt}, history_messages={history_messages}, "
+                 f"keyword_extraction={keyword_extraction}, args={args}, kwargs={kwargs}")
         raise
 
 def clear_neo4j_database():
@@ -254,7 +281,7 @@ async def main():
     # Initialize LightRAG
     rag = LightRAG(
         working_dir=args.working_dir,
-        llm_model_func=gpt4o_mini_complete_with_retries,
+        llm_model_func=claude_complete_with_retries,
         # graph_storage="Neo4JStorage",
         graph_storage="NetworkXStorage",
         enable_llm_cache=True,
